@@ -20,10 +20,21 @@ A lightweight utility script to modify workout parameters (Heart Rate, Calories,
 - **Flexible Timestamping:** Set explicit start dates/times or shift existing timestamps relatively by hours/days.
 - **Batch Processing:** Supports processing individual files or entire folders.
 
-## Prerequisites
+## Prerequisites & Requirements
 
-- **Python 3.x**
-- **Java (JRE/JDK 8+)**: Required to run `FitCSVTool.jar`.
+- **Python 3.x** (Uses Python Standard Libraries: `csv`, `tkinter`, `argparse`, `datetime`)
+- **Java (JRE/JDK 8+)**: Required to execute `FitCSVTool.jar`.
+
+### System Dependencies
+No external `pip` packages are required. If using GUI on Linux or Termux:
+```bash
+# Ubuntu / Debian
+sudo apt install python3-tk default-jre
+
+# Termux (Android)
+pkg install python-tkinter openjdk-17
+```
+
 
 ## Usage
 
