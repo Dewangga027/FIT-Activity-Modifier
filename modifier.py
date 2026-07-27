@@ -8,6 +8,15 @@ import datetime
 import subprocess
 import argparse
 
+try:
+    import matplotlib
+    matplotlib.use('TkAgg')
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+
 GARMIN_EPOCH = datetime.datetime(1989, 12, 31)
 
 def find_fit_csv_tool():
@@ -133,6 +142,79 @@ def extract_metadata_from_file(filepath):
                 pass
                 
     return dt_str, dur_str, avg_hr, total_cal
+
+def extract_hr_timeseries(filepath):
+    """
+    Mengekstrak data time-series heart rate dari file FIT atau CSV.
+    Return: list of dict [{
+        'elapsed_sec': float,   # detik sejak aktivitas dimulai
+        'timestamp_dt': datetime, # datetime object (UTC Garmin epoch)
+        'heart_rate': int        # bpm
+    }]
+    """
+    if not os.path.exists(filepath):
+        return []
+        
+    in_base, in_ext = os.path.splitext(filepath)
+    in_ext = in_ext.lower()
+    
+    temp_csv = None
+    target_csv = filepath
+    
+    if in_ext == ".fit":
+        jar_path = find_fit_csv_tool()
+        if not jar_path:
+            return []
+        temp_csv = in_base + "_temp_hr_meta.csv"
+        cmd = ["java", "-jar", jar_path, "-b", filepath, temp_csv]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and os.path.exists(temp_csv):
+            target_csv = temp_csv
+        else:
+            return []
+            
+    timeseries = []
+    first_ts = None
+    
+    try:
+        with open(target_csv, 'r', newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                if len(row) > 2 and row[0] == 'Data' and row[2] == 'record':
+                    ts = None
+                    hr = None
+                    for j in range(3, len(row)-1, 3):
+                        if row[j] == 'timestamp':
+                            val = row[j+1]
+                            if val.isdigit():
+                                ts = int(val)
+                        elif row[j] == 'heart_rate':
+                            val = row[j+1]
+                            if val.isdigit():
+                                hr = int(val)
+                                
+                    if ts is not None and hr is not None:
+                        if first_ts is None:
+                            first_ts = ts
+                            
+                        elapsed_sec = float(ts - first_ts)
+                        dt = GARMIN_EPOCH + datetime.timedelta(seconds=ts)
+                        
+                        timeseries.append({
+                            'elapsed_sec': elapsed_sec,
+                            'timestamp_dt': dt,
+                            'heart_rate': hr
+                        })
+    except Exception:
+        pass
+    finally:
+        if temp_csv and os.path.exists(temp_csv):
+            try:
+                os.remove(temp_csv)
+            except Exception:
+                pass
+                
+    return timeseries
 
 def process_csv(input_file, output_file, target_avg_hr=None, target_calories=None, target_date_str=None, relative_shift_seconds=0, target_duration_seconds=None):
     time_shift = relative_shift_seconds
@@ -458,90 +540,180 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("FIT / CSV Modifier Workflow (HR, Kalori, Tanggal & Durasi)")
+        self.root.geometry("1150x760")
+        self.root.grid_rowconfigure(11, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
+
+        # Global Font Styling
+        FONT_FAMILY = "Segoe UI"
+        FONT_MAIN = (FONT_FAMILY, 10)
+        FONT_BOLD = (FONT_FAMILY, 10, "bold")
+        
+        self.root.option_add("*Font", FONT_MAIN)
         
         # Row 0: Input File / Folder
-        tk.Label(root, text="Input File / Folder:").grid(row=0, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(root, text="Input File / Folder:", font=FONT_BOLD).grid(row=0, column=0, sticky="w", padx=12, pady=6)
         self.input_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit")
-        tk.Entry(root, textvariable=self.input_var, width=45).grid(row=0, column=1, padx=5, pady=5)
+        tk.Entry(root, textvariable=self.input_var, width=58, font=FONT_MAIN).grid(row=0, column=1, padx=5, pady=6, sticky="w")
         
         btn_frame = tk.Frame(root)
-        btn_frame.grid(row=0, column=2, padx=5, pady=5)
-        tk.Button(btn_frame, text="File...", command=self.browse_file).pack(side="left", padx=2)
-        tk.Button(btn_frame, text="Folder...", command=self.browse_folder).pack(side="left", padx=2)
+        btn_frame.grid(row=0, column=2, padx=12, pady=6, sticky="w")
+        tk.Button(btn_frame, text="File...", command=self.browse_file, font=FONT_MAIN).pack(side="left", padx=2)
+        tk.Button(btn_frame, text="Folder...", command=self.browse_folder, font=FONT_MAIN).pack(side="left", padx=2)
         
         # Row 1: Output Folder
-        tk.Label(root, text="Output Folder:").grid(row=1, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(root, text="Output Folder:", font=FONT_BOLD).grid(row=1, column=0, sticky="w", padx=12, pady=6)
         self.output_dir_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit_modified")
-        tk.Entry(root, textvariable=self.output_dir_var, width=45).grid(row=1, column=1, padx=5, pady=5)
-        tk.Button(root, text="Browse Folder...", command=self.browse_output_dir).grid(row=1, column=2, padx=5, pady=5)
+        tk.Entry(root, textvariable=self.output_dir_var, width=58, font=FONT_MAIN).grid(row=1, column=1, padx=5, pady=6, sticky="w")
+        tk.Button(root, text="Browse Folder...", command=self.browse_output_dir, font=FONT_MAIN).grid(row=1, column=2, padx=12, pady=6, sticky="w")
         
-        # Row 2: Date & Time Input
-        tk.Label(root, text="Tanggal (YYYY-MM-DD):").grid(row=2, column=0, sticky="w", padx=10, pady=5)
+        # Row 2: Date & Time Input (Start & End)
+        tk.Label(root, text="Tanggal (YYYY-MM-DD):", font=FONT_BOLD).grid(row=2, column=0, sticky="w", padx=12, pady=6)
         dt_frame = tk.Frame(root)
-        dt_frame.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        dt_frame.grid(row=2, column=1, sticky="w", padx=5, pady=6)
         
         self.date_var = tk.StringVar(value="")
-        tk.Entry(dt_frame, textvariable=self.date_var, width=14).pack(side="left", padx=2)
+        tk.Entry(dt_frame, textvariable=self.date_var, width=14, font=FONT_MAIN).pack(side="left", padx=2)
         
-        tk.Label(dt_frame, text="Waktu (HH:MM:SS):").pack(side="left", padx=(10, 2))
+        tk.Label(dt_frame, text="Start (HH:MM:SS):", font=FONT_BOLD).pack(side="left", padx=(12, 2))
         self.time_var = tk.StringVar(value="")
-        tk.Entry(dt_frame, textvariable=self.time_var, width=12).pack(side="left", padx=2)
+        entry_start = tk.Entry(dt_frame, textvariable=self.time_var, width=12, font=FONT_MAIN)
+        entry_start.pack(side="left", padx=2)
 
-        # Row 3: Preset Buttons for Date & Time
-        preset_frame = tk.Frame(root)
-        preset_frame.grid(row=3, column=1, sticky="w", padx=5, pady=2)
-        
-        tk.Button(preset_frame, text="🕒 Sekarang", command=self.set_datetime_now, bg="#e1f5fe").pack(side="left", padx=2)
-        tk.Button(preset_frame, text="-1 Hari", command=lambda: self.adjust_days(-1)).pack(side="left", padx=2)
-        tk.Button(preset_frame, text="+1 Hari", command=lambda: self.adjust_days(1)).pack(side="left", padx=2)
-        tk.Button(preset_frame, text="-1 Jam", command=lambda: self.adjust_hours(-1)).pack(side="left", padx=2)
-        tk.Button(preset_frame, text="+1 Jam", command=lambda: self.adjust_hours(1)).pack(side="left", padx=2)
+        tk.Label(dt_frame, text="End (HH:MM:SS):", font=FONT_BOLD).pack(side="left", padx=(12, 2))
+        self.time_end_var = tk.StringVar(value="")
+        entry_end = tk.Entry(dt_frame, textvariable=self.time_end_var, width=12, font=FONT_MAIN)
+        entry_end.pack(side="left", padx=2)
+
+        self._updating_time = False
+        self.time_end_var.trace_add("write", lambda *args: self._on_end_time_changed())
+        self.time_var.trace_add("write", lambda *args: self._on_start_time_changed())
+        self.duration_var = tk.StringVar(value="")
+        self.duration_var.trace_add("write", lambda *args: self._on_duration_changed())
 
         # Row 4: Total Workout Duration (Durasi Waktu Latihan)
-        tk.Label(root, text="Total Waktu Latihan (HH:MM:SS):").grid(row=4, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(root, text="Total Waktu Latihan (HH:MM:SS):", font=FONT_BOLD).grid(row=4, column=0, sticky="w", padx=12, pady=6)
         dur_frame = tk.Frame(root)
-        dur_frame.grid(row=4, column=1, sticky="w", padx=5, pady=5)
+        dur_frame.grid(row=4, column=1, sticky="w", padx=5, pady=6)
         
-        self.duration_var = tk.StringVar(value="")
-        tk.Entry(dur_frame, textvariable=self.duration_var, width=14).pack(side="left", padx=2)
-        tk.Label(dur_frame, text="(Atau ketik total menit / detik)", fg="gray").pack(side="left", padx=5)
+        self.duration_var_entry = tk.Entry(dur_frame, textvariable=self.duration_var, width=16, font=FONT_MAIN)
+        self.duration_var_entry.pack(side="left", padx=2)
+        tk.Label(dur_frame, text="(Atau ketik total menit / detik)", fg="#555555", font=(FONT_FAMILY, 9, "italic")).pack(side="left", padx=6)
 
         # Row 5: Preset Buttons for Duration
         dur_preset_frame = tk.Frame(root)
         dur_preset_frame.grid(row=5, column=1, sticky="w", padx=5, pady=2)
         
-        tk.Button(dur_preset_frame, text="-5 Min", command=lambda: self.adjust_duration_minutes(-5)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="+5 Min", command=lambda: self.adjust_duration_minutes(5)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="-15 Min", command=lambda: self.adjust_duration_minutes(-15)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="+15 Min", command=lambda: self.adjust_duration_minutes(15)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="30 Min", command=lambda: self.set_duration_minutes(30)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="45 Min", command=lambda: self.set_duration_minutes(45)).pack(side="left", padx=2)
-        tk.Button(dur_preset_frame, text="60 Min", command=lambda: self.set_duration_minutes(60)).pack(side="left", padx=2)
+        preset_font = (FONT_FAMILY, 9)
+        tk.Button(dur_preset_frame, text="-5 Min", command=lambda: self.adjust_duration_minutes(-5), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="+5 Min", command=lambda: self.adjust_duration_minutes(5), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="-15 Min", command=lambda: self.adjust_duration_minutes(-15), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="+15 Min", command=lambda: self.adjust_duration_minutes(15), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="30 Min", command=lambda: self.set_duration_minutes(30), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="45 Min", command=lambda: self.set_duration_minutes(45), font=preset_font).pack(side="left", padx=2)
+        tk.Button(dur_preset_frame, text="60 Min", command=lambda: self.set_duration_minutes(60), font=preset_font).pack(side="left", padx=2)
 
         # Row 6: Target Avg Heart Rate
-        tk.Label(root, text="Target Avg Heart Rate (bpm):").grid(row=6, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(root, text="Target Avg Heart Rate (bpm):", font=FONT_BOLD).grid(row=6, column=0, sticky="w", padx=12, pady=6)
         self.hr_var = tk.StringVar(value="")
-        tk.Entry(root, textvariable=self.hr_var, width=25).grid(row=6, column=1, sticky="w", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.hr_var, width=28, font=FONT_MAIN).grid(row=6, column=1, sticky="w", padx=5, pady=6)
         
         # Row 7: Target Calories
-        tk.Label(root, text="Target Calories (kcal):").grid(row=7, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(root, text="Target Calories (kcal):", font=FONT_BOLD).grid(row=7, column=0, sticky="w", padx=12, pady=6)
         self.cal_var = tk.StringVar(value="")
-        tk.Entry(root, textvariable=self.cal_var, width=25).grid(row=7, column=1, sticky="w", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.cal_var, width=28, font=FONT_MAIN).grid(row=7, column=1, sticky="w", padx=5, pady=6)
         
         # Row 8: Checkbox Keep Temp
         self.keep_temp_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(root, text="Simpan file CSV sementara di folder output", variable=self.keep_temp_var).grid(row=8, column=1, sticky="w", padx=5, pady=5)
+        tk.Checkbutton(root, text="Simpan file CSV sementara di folder output", variable=self.keep_temp_var, font=FONT_MAIN).grid(row=8, column=1, sticky="w", padx=5, pady=6)
 
-        # Row 9: Process Button
-        tk.Button(root, text="🚀 Process Workflow", command=self.process, bg="#2e7d32", fg="white", font=("Arial", 10, "bold")).grid(row=9, column=1, pady=15)
+        # Row 10: Process Button
+        tk.Button(root, text=" Modify ", command=self.process, bg="#2e7d32", fg="white", font=(FONT_FAMILY, 11, "bold"), padx=25, pady=4).grid(row=10, column=1, pady=12)
         
+        # Row 11: Embedded Charts (Side by Side)
+        self.chart_frame = tk.Frame(root)
+        self.chart_frame.grid(row=11, column=0, columnspan=3, pady=10, padx=12, sticky="nsew")
+        if MATPLOTLIB_AVAILABLE:
+            plt.rcParams.update({
+                'font.size': 10,
+                'axes.titlesize': 12,
+                'axes.labelsize': 10,
+                'xtick.labelsize': 9,
+                'ytick.labelsize': 9
+            })
+            self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(11, 4))
+            self.fig.tight_layout(pad=3.0)
+            self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+            self.ax1.set_title("Original HR")
+            self.ax1.set_xlabel("Time (s)")
+            self.ax1.set_ylabel("BPM")
+            self.ax1.grid(True, linestyle='--', alpha=0.6)
+            
+            self.ax2.set_title("Modified HR")
+            self.ax2.set_xlabel("Time (s)")
+            self.ax2.set_ylabel("BPM")
+            self.ax2.grid(True, linestyle='--', alpha=0.6)
+            self.canvas.draw()
+        else:
+            tk.Label(self.chart_frame, text="Matplotlib tidak terinstall. Chart tidak ditampilkan.", fg="gray", font=FONT_MAIN).pack()
+
         if os.path.exists(self.input_var.get()):
             self.auto_set_paths(self.input_var.get())
+
+    def _on_start_time_changed(self):
+        if self._updating_time: return
+        self._updating_time = True
+        try:
+            start_dt = self.get_current_datetime()
+            dur_sec = self.parse_gui_duration()
+            if start_dt and dur_sec is not None and dur_sec >= 0:
+                end_dt = start_dt + datetime.timedelta(seconds=dur_sec)
+                self.time_end_var.set(end_dt.strftime("%H:%M:%S"))
+        except Exception:
+            pass
+        finally:
+            self._updating_time = False
+
+    def _on_end_time_changed(self):
+        if self._updating_time: return
+        self._updating_time = True
+        try:
+            t_start_str = self.time_var.get().strip()
+            t_end_str = self.time_end_var.get().strip()
+            if t_start_str and t_end_str:
+                s_sec = parse_duration_to_seconds(t_start_str)
+                e_sec = parse_duration_to_seconds(t_end_str)
+                if s_sec is not None and e_sec is not None:
+                    if e_sec < s_sec:
+                        e_sec += 86400
+                    dur_sec = e_sec - s_sec
+                    self.duration_var.set(format_seconds_to_hhmmss(dur_sec))
+        except Exception:
+            pass
+        finally:
+            self._updating_time = False
+
+    def _on_duration_changed(self):
+        if self._updating_time: return
+        self._updating_time = True
+        try:
+            start_dt = self.get_current_datetime()
+            dur_sec = self.parse_gui_duration()
+            if start_dt and dur_sec is not None and dur_sec >= 0:
+                end_dt = start_dt + datetime.timedelta(seconds=dur_sec)
+                self.time_end_var.set(end_dt.strftime("%H:%M:%S"))
+        except Exception:
+            pass
+        finally:
+            self._updating_time = False
 
     def set_datetime_now(self):
         now = datetime.datetime.now()
         self.date_var.set(now.strftime("%Y-%m-%d"))
         self.time_var.set(now.strftime("%H:%M:%S"))
+        self._on_start_time_changed()
 
     def get_current_datetime(self):
         d_str = self.date_var.get().strip()
@@ -602,12 +774,16 @@ class App:
             
             if extracted_dur:
                 self.duration_var.set(extracted_dur)
+            else:
+                self._on_start_time_changed()
                 
             if ext_hr:
                 self.hr_var.set(ext_hr)
                 
             if ext_cal:
                 self.cal_var.set(ext_cal)
+                
+            self.plot_original(path)
 
     def browse_file(self):
         f = filedialog.askopenfilename(filetypes=[("FIT / CSV files", "*.fit;*.csv"), ("FIT files", "*.fit"), ("CSV files", "*.csv")])
@@ -626,6 +802,38 @@ class App:
         if d:
             self.output_dir_var.set(d)
             
+    def plot_original(self, file_path):
+        if not MATPLOTLIB_AVAILABLE: return
+        data = extract_hr_timeseries(file_path)
+        self.ax1.clear()
+        self.ax1.set_title("Original HR")
+        self.ax1.set_xlabel("Time (s)")
+        self.ax1.set_ylabel("BPM")
+        self.ax1.grid(True, linestyle='--', alpha=0.6)
+        if data:
+            x = [d['elapsed_sec'] for d in data]
+            y = [d['heart_rate'] for d in data]
+            self.ax1.plot(x, y, color='blue', alpha=0.7)
+            avg_hr = sum(y)/len(y)
+            self.ax1.set_title(f"Original HR (Avg: {avg_hr:.1f})")
+        self.canvas.draw()
+        
+    def plot_modified(self, file_path):
+        if not MATPLOTLIB_AVAILABLE: return
+        data = extract_hr_timeseries(file_path)
+        self.ax2.clear()
+        self.ax2.set_title("Modified HR")
+        self.ax2.set_xlabel("Time (s)")
+        self.ax2.set_ylabel("BPM")
+        self.ax2.grid(True, linestyle='--', alpha=0.6)
+        if data:
+            x = [d['elapsed_sec'] for d in data]
+            y = [d['heart_rate'] for d in data]
+            self.ax2.plot(x, y, color='orange', alpha=0.7)
+            avg_hr = sum(y)/len(y)
+            self.ax2.set_title(f"Modified HR (Avg: {avg_hr:.1f})")
+        self.canvas.draw()
+        
     def process(self):
         try:
             hr_val = self.hr_var.get().strip()
@@ -656,6 +864,12 @@ class App:
                 target_duration_seconds=dur_sec,
                 keep_temp=self.keep_temp_var.get()
             )
+            
+            # Update modified chart
+            input_path = self.input_var.get().strip()
+            if os.path.isfile(input_path) and len(files) > 0:
+                self.plot_modified(files[0])
+            
             file_names = "\n".join([os.path.basename(f) for f in files])
             messagebox.showinfo("Success", f"Berhasil memproses {len(files)} file ke folder:\n{out_dir}\n\nFile:\n{file_names}")
         except Exception as e:
