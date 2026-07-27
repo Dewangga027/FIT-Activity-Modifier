@@ -1,70 +1,67 @@
 # FIT Activity Modifier
 
-Proyek ini adalah alat untuk memodifikasi file `.fit` atau `.csv` aktivitas olahraga (misalnya dari Huawei Health) sebelum diunggah ke platform seperti Strava. Alat ini memungkinkan modifikasi pada berbagai metrik seperti detak jantung (Heart Rate), kalori, tanggal, waktu, dan durasi latihan.
+A lightweight utility script to modify workout parameters (Heart Rate, Calories, Timestamp, and Duration) in `.fit` and `.csv` activity files before uploading to platforms like Strava. Built on top of Garmin's **FitCSVTool**.
 
-Alat ini menggunakan **FitCSVTool** dari Garmin FIT SDK untuk mengonversi file biner `.fit` menjadi `.csv` untuk dimodifikasi, dan mengonversinya kembali menjadi file `.fit` yang siap diunggah.
+## Workflow
 
-## Fitur Utama
+```
+[ FIT File ] ──► [ Decode to CSV ] ──► [ Modify Data (Python) ] ──► [ Encode to FIT ] ──► [ Output FIT File ]
+```
 
-- **GUI & CLI:** Tersedia antarmuka grafis (GUI) yang ramah pengguna dan antarmuka baris perintah (CLI) untuk otomatisasi.
-- **Modifikasi Heart Rate:** Menaikkan atau menurunkan rata-rata Heart Rate secara proporsional.
-- **Modifikasi Kalori:** Mengubah total kalori yang terbakar.
-- **Modifikasi Waktu:** Mengubah tanggal dan waktu mulai aktivitas (mendukung pergeseran relatif dalam hari/jam atau pengaturan waktu absolut).
-- **Modifikasi Durasi:** Memperpanjang atau memperpendek durasi aktivitas.
-- **Batch Processing:** Mendukung pemrosesan satu file atau seluruh folder sekaligus.
+1. **Decode:** Converts `.fit` binary files to `.csv` via `FitCSVTool.jar`.
+2. **Modify:** Adjusts target metrics (HR, duration, calories, start time) across records and summary messages.
+3. **Encode:** Re-encodes modified `.csv` back into a valid `.fit` binary ready for Strava upload.
 
-## Kebutuhan Sistem
+## Features
 
-1. **Python 3.x**
-2. **Java (JRE/JDK 8 atau lebih baru)**: Diperlukan untuk menjalankan `FitCSVTool.jar`.
+- **GUI & CLI Modes:** Launch an interactive GUI (`tkinter`) or run CLI commands for automated scripts.
+- **Heart Rate Scaling:** Scales average heart rate (bpm) proportionally across all recorded data points.
+- **Duration & Calorie Adjustment:** Modifies total calories burned and total elapsed/active workout duration.
+- **Flexible Timestamping:** Set explicit start dates/times or shift existing timestamps relatively by hours/days.
+- **Batch Processing:** Supports processing individual files or entire folders.
 
-## Cara Penggunaan
+## Prerequisites
 
-### Menggunakan GUI (Antarmuka Grafis)
+- **Python 3.x**
+- **Java (JRE/JDK 8+)**: Required to run `FitCSVTool.jar`.
 
-Jalankan script tanpa argumen untuk membuka mode GUI:
+## Usage
 
+### 1. GUI Mode
+Run without arguments to launch the graphical interface:
 ```bash
 python modifier.py
-# atau
-python modifier.py --gui
 ```
 
-Di dalam aplikasi:
-1. Pilih file (`.fit` / `.csv`) atau folder yang berisi file aktivitas.
-2. Tentukan folder output untuk menyimpan hasil modifikasi.
-3. Centang metrik yang ingin diubah dan masukkan nilai targetnya.
-4. Klik **Proses File**.
-
-### Menggunakan CLI (Command Line Interface)
-
-Script ini dapat dijalankan langsung dari terminal/command prompt, yang sangat berguna untuk otomatisasi (misalnya via Termux atau cron job).
-
+### 2. CLI Mode
+Ideal for automation and background tasks:
 ```bash
-python modifier.py [input_path] -o [output_folder] [options]
+python modifier.py <input_path> -o <output_directory> [options]
 ```
 
-**Opsi yang tersedia:**
-- `-hr, --hr <nilai>`: Target Average Heart Rate (bpm).
-- `-c, --cal <nilai>`: Target Kalori (kcal).
-- `-d, --date <YYYY-MM-DD>`: Target Tanggal.
-- `-t, --time <HH:MM:SS>`: Target Waktu.
-- `--dur <durasi>`: Target Durasi (contoh: `01:00:00`, `45m`, `2700`).
-- `--now`: Menggunakan tanggal & waktu saat ini.
-- `--shift-days <angka>`: Geser tanggal (contoh: `+1` atau `-1`).
-- `--shift-hours <angka>`: Geser waktu (contoh: `+2` atau `-2`).
-- `--keep-temp`: Simpan file CSV sementara di folder output untuk debugging.
+#### CLI Options
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `-hr, --hr` | Target Average Heart Rate (bpm) | `-hr 150` |
+| `-c, --cal` | Target Total Calories (kcal) | `-c 450` |
+| `-d, --date` | Target Start Date (`YYYY-MM-DD`) | `-d 2026-07-27` |
+| `-t, --time` | Target Start Time (`HH:MM:SS`) | `-t 08:30:00` |
+| `--dur` | Target Workout Duration | `--dur 45m` or `--dur 00:45:00` |
+| `--now` | Set timestamp to current local time | `--now` |
+| `--shift-days` | Shift start date by N days | `--shift-days 1` |
+| `--shift-hours` | Shift start time by N hours | `--shift-hours -2` |
 
-**Contoh:**
+#### Examples
 ```bash
-# Modifikasi satu file agar memiliki avg HR 150 bpm dan durasi 45 menit
-python modifier.py fit/aktivitas.fit -o fit/output -hr 150 --dur 45m
+# Modify average HR to 150 bpm & duration to 45 mins
+python modifier.py fit/activity.fit -o output/ -hr 150 --dur 45m
 
-# Modifikasi semua file di folder untuk digeser 1 hari ke depan
-python modifier.py fit/ -o fit/output --shift-days 1
+# Shift all activities in a directory forward by 1 day
+python modifier.py fit/ -o output/ --shift-days 1
 ```
 
-## Struktur Direktori
-- `modifier.py`: Script utama untuk modifikasi.
-- `FitCSVTool.jar`: Tool bawaan Garmin FIT SDK untuk konversi FIT <-> CSV.
-- `fit/` & `plan/`: Folder yang direkomendasikan sebagai tempat penyimpanan file aktivitas dan dokumen rencana (diabaikan oleh git).
+## Directory Structure
+- `modifier.py` : Main application script (GUI + CLI).
+- `FitCSVTool/` : Garmin FIT SDK CSV tool components.
+- `fit/` : Ignored working folder for input/output `.fit` files.
+- `plan/` : Ignored folder for project planning docs.
