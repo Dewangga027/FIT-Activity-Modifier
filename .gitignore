@@ -24,5 +24,6 @@ config/strava_config.json
 # IDE & System Files
 .vscode/
 .idea/
+.agents/
 .DS_Store
 Thumbs.db
