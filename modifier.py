@@ -903,19 +903,49 @@ class App:
             messagebox.showwarning("Warning", "Tidak ada file yang baru diproses untuk di-upload.")
             return
             
-        try:
-            results = []
-            for f in self.last_files:
-                if f.lower().endswith('.fit'):
-                    res = strava_api.upload_fit_file(f)
-                    results.append(f"Upload ID: {res.get('id')} - Status: {res.get('status')}")
+        self.show_upload_dialog()
+
+    def show_upload_dialog(self):
+        top = tk.Toplevel(self.root)
+        top.title("Detail Upload Strava")
+        top.geometry("450x240")
+        top.grab_set()
+        
+        default_name = os.path.splitext(os.path.basename(self.last_files[0]))[0] if self.last_files else "Activity"
+        default_name = default_name.replace("_modified", "").replace("_", " ").title()
+        
+        tk.Label(top, text="Nama Aktivitas di Strava:", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 2))
+        name_var = tk.StringVar(value=default_name)
+        tk.Entry(top, textvariable=name_var, width=45, font=("Segoe UI", 10)).pack(padx=20, pady=2)
+        
+        tk.Label(top, text="Deskripsi Aktivitas:", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(10, 2))
+        desc_var = tk.StringVar(value="Uploaded via FIT Activity Modifier")
+        tk.Entry(top, textvariable=desc_var, width=45, font=("Segoe UI", 10)).pack(padx=20, pady=2)
+        
+        def do_upload():
+            act_name = name_var.get().strip() or None
+            act_desc = desc_var.get().strip() or "Uploaded via FIT Activity Modifier"
+            top.destroy()
             
-            if results:
-                messagebox.showinfo("Strava Upload", "Berhasil mengunggah file ke Strava!\n" + "\n".join(results))
-            else:
-                messagebox.showwarning("Warning", "Tidak ada file .fit yang ditemukan dari hasil proses.")
-        except Exception as e:
-            messagebox.showerror("Strava Upload Error", str(e))
+            try:
+                results = []
+                for f in self.last_files:
+                    if f.lower().endswith('.fit'):
+                        res = strava_api.upload_fit_file(f, name=act_name, description=act_desc)
+                        results.append(f"Upload ID: {res.get('id')} - Status: {res.get('status')}")
+                
+                if results:
+                    messagebox.showinfo("Strava Upload", "Berhasil mengunggah file ke Strava!\n" + "\n".join(results))
+                else:
+                    messagebox.showwarning("Warning", "Tidak ada file .fit yang ditemukan dari hasil proses.")
+            except Exception as e:
+                messagebox.showerror("Strava Upload Error", str(e))
+                
+        btn_frame = tk.Frame(top)
+        btn_frame.pack(pady=20)
+        
+        tk.Button(btn_frame, text="Unggah Sekarang", command=do_upload, bg="#fc4c02", fg="white", font=("Segoe UI", 10, "bold"), padx=10, pady=4).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Batal", command=top.destroy, font=("Segoe UI", 10), padx=10, pady=4).pack(side="left", padx=5)
 
     def list_strava_activities(self):
         if not STRAVA_AVAILABLE:
@@ -1010,7 +1040,8 @@ def main():
     parser.add_argument("--list-strava", action="store_true", help="Tampilkan daftar aktivitas terbaru di Strava")
     parser.add_argument("--delete-strava", type=int, help="Hapus aktivitas Strava berdasarkan ID")
     parser.add_argument("--edit-strava", type=int, help="Edit aktivitas Strava berdasarkan ID")
-    parser.add_argument("--name", type=str, help="Nama aktivitas baru (digunakan dengan --edit-strava)")
+    parser.add_argument("--name", type=str, help="Nama aktivitas baru (digunakan dengan --upload atau --edit-strava)")
+    parser.add_argument("--desc", "--description", type=str, help="Deskripsi aktivitas (digunakan dengan --upload)")
 
     args = parser.parse_args()
 
@@ -1093,7 +1124,7 @@ def main():
                     if f.lower().endswith('.fit'):
                         try:
                             print(f"Mengunggah {os.path.basename(f)} ke Strava...")
-                            res = strava_api.upload_fit_file(f)
+                            res = strava_api.upload_fit_file(f, name=args.name, description=args.desc or "Uploaded via FIT Activity Modifier")
                             print(f"Berhasil! Upload ID: {res.get('id')} - Status: {res.get('status')}")
                         except Exception as e:
                             print(f"Gagal mengunggah {os.path.basename(f)}: {e}", file=sys.stderr)
