@@ -595,6 +595,7 @@ class App:
         self._updating_time = False
         self.time_end_var.trace_add("write", lambda *args: self._on_end_time_changed())
         self.time_var.trace_add("write", lambda *args: self._on_start_time_changed())
+        self.date_var.trace_add("write", lambda *args: self._on_start_time_changed())
         self.duration_var = tk.StringVar(value="")
         self.duration_var.trace_add("write", lambda *args: self._on_duration_changed())
 
@@ -714,9 +715,27 @@ class App:
         if self._updating_time: return
         self._updating_time = True
         try:
-            start_dt = self.get_current_datetime()
             dur_sec = self.parse_gui_duration()
-            if start_dt and dur_sec is not None and dur_sec >= 0:
+            if dur_sec is None or dur_sec < 0:
+                return
+
+            # Otomatis isi Tanggal jika belum terisi
+            if not self.date_var.get().strip():
+                self.date_var.set(datetime.datetime.now().strftime("%Y-%m-%d"))
+
+            # Otomatis isi Start Time jika belum terisi
+            if not self.time_var.get().strip():
+                t_end_str = self.time_end_var.get().strip()
+                if t_end_str:
+                    t_end_sec = parse_duration_to_seconds(t_end_str)
+                    if t_end_sec is not None:
+                        t_start_sec = (t_end_sec - dur_sec) % 86400
+                        self.time_var.set(format_seconds_to_hhmmss(t_start_sec))
+                else:
+                    self.time_var.set(datetime.datetime.now().strftime("%H:%M:%S"))
+
+            start_dt = self.get_current_datetime()
+            if start_dt:
                 end_dt = start_dt + datetime.timedelta(seconds=dur_sec)
                 self.time_end_var.set(end_dt.strftime("%H:%M:%S"))
         except Exception:
