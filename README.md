@@ -23,6 +23,7 @@ A lightweight utility script to modify workout parameters (Heart Rate, Calories,
 ## Prerequisites & Requirements
 
 - **Python 3.x** (Uses Python Standard Libraries: `csv`, `tkinter`, `argparse`, `datetime`)
+- **requests** & **matplotlib**: `pip install -r requirements.txt` (Untuk fitur upload Strava dan grafik).
 - **Java (JRE/JDK 8+)**: Required to execute `FitCSVTool.jar`.
 
 ### System Dependencies
@@ -61,6 +62,8 @@ python modifier.py <input_path> -o <output_directory> [options]
 | `--now` | Set timestamp to current local time | `--now` |
 | `--shift-days` | Shift start date by N days | `--shift-days 1` |
 | `--shift-hours` | Shift start time by N hours | `--shift-hours -2` |
+| `--upload` | Otomatis upload ke Strava setelah proses | `--upload` |
+| `--list-strava`| Lihat 5 aktivitas terakhir di akun Strava | `--list-strava` |
 
 #### Examples
 ```bash
@@ -69,7 +72,15 @@ python modifier.py fit/activity.fit -o output/ -hr 150 --dur 45m
 
 # Shift all activities in a directory forward by 1 day
 python modifier.py fit/ -o output/ --shift-days 1
-```
+
+# Modify and Auto-Upload to Strava
+python modifier.py fit/activity.fit -o output/ -hr 150 --upload
+
+## Strava Integration
+Untuk menggunakan fitur Upload Strava atau melihat aktivitas:
+1. Pastikan `requests` telah diinstal (`pip install requests`).
+2. Isi `client_id`, `client_secret`, dan `refresh_token` di dalam file `strava_config.json`.
+3. Gunakan tombol **Upload to Strava** di GUI, atau tambahkan flag `--upload` di CLI.
 
 ## Directory Structure
 - `modifier.py` : Main application script (GUI + CLI).
