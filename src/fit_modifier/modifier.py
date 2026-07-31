@@ -83,6 +83,126 @@ def parse_duration_to_seconds(val):
             else:
                 return int(num)
 
+def calculate_hr_zones(hr_list, max_hr=190):
+    """
+    Menghitung distribusi zona detak jantung (Zone 1 - Zone 5).
+    Return: dict dengan nama zona, count, dan persentase.
+    """
+    if not hr_list:
+        return {f"Z{i}": {"name": f"Zone {i}", "count": 0, "pct": 0.0} for i in range(1, 6)}
+        
+    zones = {
+        "Z1": {"name": "Warmup / Recovery (50-60%)", "max": max_hr * 0.60, "count": 0},
+        "Z2": {"name": "Easy / Endurance (60-70%)", "max": max_hr * 0.70, "count": 0},
+        "Z3": {"name": "Aerobic / Tempo (70-80%)", "max": max_hr * 0.80, "count": 0},
+        "Z4": {"name": "Threshold (80-90%)", "max": max_hr * 0.90, "count": 0},
+        "Z5": {"name": "Maximum / Anaerobic (90-100%)", "max": max_hr * 1.10, "count": 0},
+    }
+    
+    total = len(hr_list)
+    for hr in hr_list:
+        if hr < zones["Z1"]["max"]:
+            zones["Z1"]["count"] += 1
+        elif hr < zones["Z2"]["max"]:
+            zones["Z2"]["count"] += 1
+        elif hr < zones["Z3"]["max"]:
+            zones["Z3"]["count"] += 1
+        elif hr < zones["Z4"]["max"]:
+            zones["Z4"]["count"] += 1
+        else:
+            zones["Z5"]["count"] += 1
+            
+    res = {}
+    for z, data in zones.items():
+        res[z] = {
+            "name": data["name"],
+            "count": data["count"],
+            "pct": round((data["count"] / total) * 100, 1) if total > 0 else 0.0
+        }
+    return res
+
+def calculate_trimp(hr_list, sample_interval_sec=1, max_hr=190, rest_hr=60, gender='male'):
+    """
+    Menghitung skor TRIMP (Training Impulse) Banister.
+    """
+    if not hr_list:
+        return 0.0
+    import math
+    b = 1.92 if gender.lower() == 'male' else 1.67
+    trimp = 0.0
+    dur_min = sample_interval_sec / 60.0
+    for hr in hr_list:
+        hr_reserve = (hr - rest_hr) / float(max_hr - rest_hr)
+        hr_reserve = max(0.0, min(1.0, hr_reserve))
+        trimp += dur_min * hr_reserve * math.exp(b * hr_reserve)
+    return round(trimp, 1)
+
+def humanize_hr_series(hr_list, target_avg_hr, enable_drift=True, enable_jitter=True, max_hr=220, min_hr=40):
+    """
+    Meng-generate deret Heart Rate yang di-humanize dengan:
+    1. Base shift ke target average HR
+    2. Cardiac drift (peningkatan bertahap 2-5% di paruh kedua durasi)
+    3. Gaussian micro-jitter (fluktuasi alami ±1-3 bpm)
+    4. Exponential smoothing (mencegah lonjakan mendadak)
+    5. Exact calibration agar rata-rata akhir presisi sesuai target_avg_hr.
+    """
+    if not hr_list:
+        return []
+    
+    n = len(hr_list)
+    current_avg = sum(hr_list) / float(n)
+    base_shift = target_avg_hr - current_avg
+    
+    # 1. Base shift + Cardiac drift + Jitter
+    raw_humanized = []
+    for i, hr in enumerate(hr_list):
+        shifted = hr + base_shift
+        
+        # Cardiac Drift di paruh kedua (jika durasi > 30 sampel)
+        drift = 0.0
+        if enable_drift and n > 30 and i > n // 2:
+            drift_progress = (i - n // 2) / float(n // 2)
+            drift = drift_progress * random.uniform(2.0, 4.0)
+            
+        # Micro-jitter (Gaussian noise)
+        jitter = random.gauss(0, 1.2) if enable_jitter else 0.0
+        
+        val = shifted + drift + jitter
+        raw_humanized.append(val)
+        
+    # 2. Exponential Moving Average Smoothing (alpha = 0.35)
+    smoothed = []
+    curr = raw_humanized[0]
+    alpha = 0.35
+    for val in raw_humanized:
+        curr = alpha * val + (1 - alpha) * curr
+        smoothed.append(curr)
+        
+    # 3. Round to int & clamp boundaries
+    clamped = []
+    for val in smoothed:
+        h = int(round(val))
+        if h < min_hr: h = min_hr
+        if h > max_hr: h = max_hr
+        clamped.append(h)
+        
+    # 4. Exact target calibration (distribusi selisih rata-rata acak)
+    diff = int(round((target_avg_hr * n) - sum(clamped)))
+    if diff != 0:
+        indices = list(range(n))
+        random.shuffle(indices)
+        step = 1 if diff > 0 else -1
+        for _ in range(abs(diff)):
+            if not indices:
+                indices = list(range(n))
+                random.shuffle(indices)
+            idx = indices.pop()
+            new_val = clamped[idx] + step
+            if min_hr <= new_val <= max_hr:
+                clamped[idx] = new_val
+                
+    return clamped
+
 def extract_metadata_from_file(filepath):
     """Mengekstrak start_time, total_elapsed_time, avg_heart_rate, dan total_calories dari file FIT atau CSV"""
     if not os.path.exists(filepath):
@@ -123,7 +243,8 @@ def extract_metadata_from_file(filepath):
                                 val = row[j+1]
                                 if val.isdigit():
                                     garmin_ts = int(val)
-                                    dt = GARMIN_EPOCH + datetime.timedelta(seconds=garmin_ts)
+                                    local_offset = datetime.datetime.now().astimezone().utcoffset().total_seconds()
+                                    dt = GARMIN_EPOCH + datetime.timedelta(seconds=garmin_ts) + datetime.timedelta(seconds=local_offset)
                                     dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                                     break
                     
@@ -302,10 +423,18 @@ def process_csv(input_file, output_file, target_avg_hr=None, target_calories=Non
     if target_calories is None:
         target_calories = orig_total_cal or 500
 
-    # Hitung pergeseran tanggal/waktu (time_shift)
+    # Hitung pergeseran tanggal/waktu (time_shift) dengan kompensasi Timezone Lokal
     if target_dt is not None and first_ts is not None:
-        original_dt = GARMIN_EPOCH + datetime.timedelta(seconds=first_ts)
-        time_shift = int((target_dt - original_dt).total_seconds())
+        original_dt_utc = GARMIN_EPOCH + datetime.timedelta(seconds=first_ts)
+        
+        # User memasukkan target_dt dalam waktu LOKAL (misal WIB).
+        # Sedangkan timestamp FIT selalu direkam dalam UTC.
+        # Maka kita harus mencari padanan target_dt dalam UTC.
+        local_offset_seconds = datetime.datetime.now().astimezone().utcoffset().total_seconds()
+        target_dt_utc = target_dt - datetime.timedelta(seconds=local_offset_seconds)
+        
+        time_shift = int((target_dt_utc - original_dt_utc).total_seconds())
+
 
     # Hitung skala durasi (scale_factor) untuk memenskala timestamp record agar Elapsed Time di Strava / Garmin berubah
     scale_factor = 1.0
@@ -339,27 +468,8 @@ def process_csv(input_file, output_file, target_avg_hr=None, target_calories=Non
     current_avg = sum(current_hrs) / len(current_hrs)
     shift = target_avg_hr - current_avg
     
-    # 3. Generate HR baru
-    new_hrs = []
-    for hr in current_hrs:
-        new_hr = int(round(hr + shift))
-        if new_hr < 40: new_hr = 40
-        if new_hr > 220: new_hr = 220
-        new_hrs.append(new_hr)
-        
-    diff = (target_avg_hr * len(new_hrs)) - sum(new_hrs)
-    diff = int(round(diff))
-    
-    indices_to_adjust = list(range(len(new_hrs)))
-    random.shuffle(indices_to_adjust)
-    
-    step = 1 if diff > 0 else -1
-    for _ in range(abs(diff)):
-        if not indices_to_adjust:
-            indices_to_adjust = list(range(len(new_hrs)))
-            random.shuffle(indices_to_adjust)
-        idx = indices_to_adjust.pop()
-        new_hrs[idx] += step
+    # 3. Generate HR baru (Humanized dengan micro-jitter, drift & smoothing)
+    new_hrs = humanize_hr_series(current_hrs, target_avg_hr)
 
     # 4. Update data HR ke rows
     for (row_idx, col_idx), new_hr in zip(record_hr_indices, new_hrs):
@@ -486,6 +596,18 @@ def process_single_file(input_path, output_dir, target_avg_hr=None, target_calor
     dur_info = f", Durasi: {format_seconds_to_hhmmss(target_duration_seconds)}" if target_duration_seconds else ""
     print(f"[2/3] Memproses data CSV (Target HR: {target_avg_hr} bpm, Kalori: {target_calories} kcal{dur_info})...")
     process_csv(csv_in, temp_output_csv, target_avg_hr, target_calories, target_date_str, relative_shift_seconds, target_duration_seconds)
+
+    # Print HR Analytics Summary
+    try:
+        mod_ts = extract_hr_timeseries(temp_output_csv)
+        if mod_ts:
+            hrs = [d['heart_rate'] for d in mod_ts]
+            trimp = calculate_trimp(hrs)
+            zones = calculate_hr_zones(hrs)
+            zone_str = ", ".join([f"{k}: {v['pct']}%" for k, v in zones.items()])
+            print(f"      📊 Analytics HR: TRIMP Score = {trimp} | HR Zones: [{zone_str}]")
+    except Exception:
+        pass
 
     # Step 4: Encode CSV ke FIT
     print(f"[3/3] Mengonversi CSV ke FIT: {temp_output_csv} -> {output_fit_path}")
