@@ -13,4 +13,5 @@ src/fit_modifier.egg-info/dependency_links.txt
 src/fit_modifier.egg-info/entry_points.txt
 src/fit_modifier.egg-info/requires.txt
 src/fit_modifier.egg-info/top_level.txt
+tests/test_creator.py
 tests/test_modifier.py
