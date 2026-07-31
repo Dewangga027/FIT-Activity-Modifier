@@ -14,8 +14,8 @@ A professional, lightweight Python utility and GUI application designed to inspe
 ```
 
 1. **Decode:** Converts `.fit` binary files to temporary structured `.csv` files using Garmin's `FitCSVTool.jar`.
-2. **Modify:** Adjusts target metrics (HR scaling, active/elapsed duration, calorie counts, timestamp offsets) across both `record` data rows and summary header messages (`session`, `lap`, `activity`).
-3. **Encode:** Re-encodes the modified `.csv` data back into a compliant `.fit` binary file.
+2. **Modify / Generate:** Adjusts target metrics (HR scaling, active/elapsed duration, calorie counts, timestamp offsets) or generates daily workout batches (HIIT, Running, Cycling).
+3. **Encode:** Re-encodes the modified/generated `.csv` data back into a compliant `.fit` binary file.
 4. **Upload (Optional):** Automatically pushes the modified FIT activity to Strava via the REST API.
 
 ---
@@ -23,11 +23,12 @@ A professional, lightweight Python utility and GUI application designed to inspe
 ## ✨ Features
 
 - **Dual Graphical & Command Line Interface:** 
-  - **GUI (`tkinter` & `matplotlib`):** Interactive visual editor featuring side-by-side Heart Rate BPM comparison charts, duration presets, and Strava activity manager.
+  - **GUI (`tkinter` & `matplotlib`):** Interactive visual editor featuring side-by-side Heart Rate BPM comparison charts, duration presets, single/batch workout creation tabs, and Strava activity manager.
   - **CLI Mode:** Command-line options ideal for batch processing, automated scripts, and server/headless environments.
 - **Proportional Heart Rate Scaling:** Adjusts average HR (bpm) across the entire workout time-series while preserving natural physiological variance and boundaries (40–220 bpm).
+- **Humanized HR Algorithm (Generative Mode):** Simulates realistic physiological patterns including exponential smoothing for intensity transitions, micro-fluctuations (Gaussian jitter), and cardiac drift in later workout stages.
 - **Duration & Timestamp Compression/Expansion:** Scales time gaps between records while updating elapsed/timer time headers to adjust workout duration dynamically.
-- **Synthetic FIT File Generator (`fit-creator`):** Generates realistic synthetic `.fit` activities for multiple sports modes (Running, Cycling, Swimming, Walking, Hiking, HIIT/Training).
+- **Synthetic FIT File & Daily Batch Generator (`fit-creator`):** Generates realistic synthetic `.fit` activities for multiple sports modes (Running, Cycling, Swimming, Walking, Hiking, HIIT/Training) individually or as daily calorie batches (e.g. 3,000 kcal split across 5 sessions/day with non-overlapping schedules).
 - **Strava API Integration:** 
   - Direct activity upload with custom names and descriptions.
   - Fetch recent activities, rename, or delete activities directly from the app.
@@ -79,7 +80,7 @@ fit-modifier
 ```
 *(Alternatively: `python -m fit_modifier` or `python -m fit_modifier.modifier`)*
 
-Launch the Synthetic FIT Activity Generator GUI:
+Launch the Synthetic FIT Activity & Daily Batch Generator GUI:
 ```bash
 fit-creator
 ```
@@ -89,13 +90,14 @@ fit-creator
 
 ### 2. Command Line Interface (CLI)
 
-Perform programmatic modifications on individual files or whole directories:
+Perform programmatic modifications or batch workout generation:
 
+#### Modify Activity (`fit-modifier`)
 ```bash
 fit-modifier <input_path> -o <output_directory> [options]
 ```
 
-#### CLI Command Options
+##### CLI Options (`fit-modifier`)
 
 | Flag | Long Flag | Description | Example |
 | :--- | :--- | :--- | :--- |
@@ -110,11 +112,36 @@ fit-modifier <input_path> -o <output_directory> [options]
 | | `--upload` | Automatically upload output `.fit` file to Strava | `--upload` |
 | | `--list-strava` | Display the 5 most recent Strava activities | `--list-strava` |
 
+#### Create / Batch Generate Workouts (`fit-creator`)
+```bash
+fit-creator [options]
+```
+
+##### CLI Options (`fit-creator`)
+
+| Flag | Long Flag | Description | Example |
+| :--- | :--- | :--- | :--- |
+| | `--batch` | Enable daily batch workout generator mode | `--batch` |
+| `-o` | `--output` | Output directory for created `.fit` files | `-o fit_created/` |
+| | `--sport` | Sport Mode (`Running`, `Cycling`, `HIIT / Training`, etc.) | `--sport "HIIT / Training"` |
+| | `--date` | Target Date (`YYYY-MM-DD`) | `--date 2026-07-31` |
+| | `--daily-calories` | Target daily calorie total (kcal) for batch mode | `--daily-calories 3000` |
+| | `--calorie-tolerance` | Additional max tolerance calories (+kcal) | `--calorie-tolerance 500` |
+| | `--sessions` | Number of workout sessions per day for batch mode | `--sessions 5` |
+| | `--time` | Start time for single creator mode (`HH:MM:SS`) | `--time 07:30:00` |
+| | `--duration` | Duration for single creator mode (`45m`, `00:45:00`) | `--duration 45m` |
+| | `--hr` | Target avg HR for single creator mode (bpm) | `--hr 150` |
+| | `--calories` | Target calories for single creator mode (kcal) | `--calories 450` |
+| | `--gui` | Launch interactive graphical user interface | `--gui` |
+
 #### CLI Usage Examples
 
 ```bash
 # Modify average HR to 150 bpm and set duration to 45 minutes
 fit-modifier examples/Activity.fit -o output/ -hr 150 --dur 45m
+
+# Generate a daily batch of 5 HIIT sessions totaling 3,000 (+500) kcal
+fit-creator --batch --daily-calories 3000 --calorie-tolerance 500 --sessions 5 --date 2026-07-31
 
 # Shift start timestamps of all activities in a directory forward by 1 day
 fit-modifier fit/ -o output/ --shift-days 1
@@ -161,6 +188,7 @@ FIT-Activity-Modifier/
 │       └── strava_auth.py
 ├── tests/                         # Unit tests
 │   ├── __init__.py
+│   ├── test_creator.py
 │   └── test_modifier.py
 ├── tools/                         # Garmin SDK & Java utility binaries
 │   ├── FitCSVTool/
