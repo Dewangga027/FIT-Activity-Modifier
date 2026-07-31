@@ -1,3 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Output and working data directories
 fit/
-plan/
-CONTRIBUTING.md
+fit_modified/
+fit_created/
+test_out/
+*.tmp
+
+# Strava API Credentials & Local Config
+strava_config.json
+config/strava_config.json
+.env
+*.env
+
+# IDE & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,16 @@
+LICENSE.txt
+README.md
+pyproject.toml
+src/fit_modifier/__init__.py
+src/fit_modifier/__main__.py
+src/fit_modifier/creator.py
+src/fit_modifier/modifier.py
+src/fit_modifier/strava_api.py
+src/fit_modifier/strava_auth.py
+src/fit_modifier.egg-info/PKG-INFO
+src/fit_modifier.egg-info/SOURCES.txt
+src/fit_modifier.egg-info/dependency_links.txt
+src/fit_modifier.egg-info/entry_points.txt
+src/fit_modifier.egg-info/requires.txt
+src/fit_modifier.egg-info/top_level.txt
+tests/test_modifier.py

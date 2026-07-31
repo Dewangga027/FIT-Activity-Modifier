@@ -9,6 +9,16 @@ import subprocess
 import argparse
 
 try:
+    from fit_modifier import strava_api
+    STRAVA_AVAILABLE = True
+except ImportError:
+    try:
+        import strava_api
+        STRAVA_AVAILABLE = True
+    except ImportError:
+        STRAVA_AVAILABLE = False
+
+try:
     import matplotlib
     matplotlib.use('TkAgg')
     import matplotlib.pyplot as plt
@@ -21,12 +31,15 @@ GARMIN_EPOCH = datetime.datetime(1989, 12, 31)
 
 def find_fit_csv_tool():
     """Mencari lokasi FitCSVTool.jar"""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cwd = os.getcwd()
     candidates = [
+        os.path.join(base_dir, "tools", "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool", "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool.jar"),
+        os.path.join(cwd, "tools", "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool.jar"),
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -447,7 +460,7 @@ def process_single_file(input_path, output_dir, target_avg_hr=None, target_calor
 
     jar_path = find_fit_csv_tool()
     if not jar_path:
-        raise FileNotFoundError("FitCSVTool.jar tidak ditemukan! Pastikan folder FitCSVTool ada.")
+        raise FileNotFoundError("FitCSVTool.jar tidak ditemukan! Pastikan folder tools/FitCSVTool ada.")
 
     temp_files_to_clean = []
 
@@ -539,6 +552,7 @@ def process_target(input_path, output_dir=None, target_avg_hr=None, target_calor
 class App:
     def __init__(self, root):
         self.root = root
+        self.last_files = []
         self.root.title("FIT / CSV Modifier Workflow (HR, Kalori, Tanggal & Durasi)")
         self.root.geometry("1150x760")
         self.root.grid_rowconfigure(11, weight=1)
@@ -553,7 +567,8 @@ class App:
         
         # Row 0: Input File / Folder
         tk.Label(root, text="Input File / Folder:", font=FONT_BOLD).grid(row=0, column=0, sticky="w", padx=12, pady=6)
-        self.input_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit")
+        default_input = os.path.join(os.getcwd(), "fit")
+        self.input_var = tk.StringVar(value=default_input if os.path.exists(default_input) else "")
         tk.Entry(root, textvariable=self.input_var, width=58, font=FONT_MAIN).grid(row=0, column=1, padx=5, pady=6, sticky="w")
         
         btn_frame = tk.Frame(root)
@@ -563,7 +578,8 @@ class App:
         
         # Row 1: Output Folder
         tk.Label(root, text="Output Folder:", font=FONT_BOLD).grid(row=1, column=0, sticky="w", padx=12, pady=6)
-        self.output_dir_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit_modified")
+        default_output = os.path.join(os.getcwd(), "fit_modified")
+        self.output_dir_var = tk.StringVar(value=default_output)
         tk.Entry(root, textvariable=self.output_dir_var, width=58, font=FONT_MAIN).grid(row=1, column=1, padx=5, pady=6, sticky="w")
         tk.Button(root, text="Browse Folder...", command=self.browse_output_dir, font=FONT_MAIN).grid(row=1, column=2, padx=12, pady=6, sticky="w")
         
@@ -588,6 +604,7 @@ class App:
         self._updating_time = False
         self.time_end_var.trace_add("write", lambda *args: self._on_end_time_changed())
         self.time_var.trace_add("write", lambda *args: self._on_start_time_changed())
+        self.date_var.trace_add("write", lambda *args: self._on_start_time_changed())
         self.duration_var = tk.StringVar(value="")
         self.duration_var.trace_add("write", lambda *args: self._on_duration_changed())
 
@@ -627,8 +644,16 @@ class App:
         self.keep_temp_var = tk.BooleanVar(value=False)
         tk.Checkbutton(root, text="Simpan file CSV sementara di folder output", variable=self.keep_temp_var, font=FONT_MAIN).grid(row=8, column=1, sticky="w", padx=5, pady=6)
 
-        # Row 10: Process Button
-        tk.Button(root, text=" Modify ", command=self.process, bg="#2e7d32", fg="white", font=(FONT_FAMILY, 11, "bold"), padx=25, pady=4).grid(row=10, column=1, pady=12)
+        # Row 10: Buttons (Process, Strava Upload, List Activities)
+        btn_frame = tk.Frame(root)
+        btn_frame.grid(row=10, column=1, pady=12, sticky="w")
+        
+        tk.Button(btn_frame, text=" Modify ", command=self.process, bg="#2e7d32", fg="white", font=(FONT_FAMILY, 11, "bold"), padx=15, pady=4).pack(side="left", padx=5)
+        
+        self.btn_upload = tk.Button(btn_frame, text="Upload to Strava", command=self.upload_to_strava, bg="#fc4c02", fg="white", font=(FONT_FAMILY, 10, "bold"), padx=10, pady=4, state=tk.DISABLED)
+        self.btn_upload.pack(side="left", padx=5)
+        
+        tk.Button(btn_frame, text="Lihat Aktivitas Strava", command=self.list_strava_activities, font=(FONT_FAMILY, 10), padx=10, pady=4).pack(side="left", padx=5)
         
         # Row 11: Embedded Charts (Side by Side)
         self.chart_frame = tk.Frame(root)
@@ -659,7 +684,7 @@ class App:
         else:
             tk.Label(self.chart_frame, text="Matplotlib tidak terinstall. Chart tidak ditampilkan.", fg="gray", font=FONT_MAIN).pack()
 
-        if os.path.exists(self.input_var.get()):
+        if self.input_var.get() and os.path.exists(self.input_var.get()):
             self.auto_set_paths(self.input_var.get())
 
     def _on_start_time_changed(self):
@@ -699,9 +724,27 @@ class App:
         if self._updating_time: return
         self._updating_time = True
         try:
-            start_dt = self.get_current_datetime()
             dur_sec = self.parse_gui_duration()
-            if start_dt and dur_sec is not None and dur_sec >= 0:
+            if dur_sec is None or dur_sec < 0:
+                return
+
+            # Otomatis isi Tanggal jika belum terisi
+            if not self.date_var.get().strip():
+                self.date_var.set(datetime.datetime.now().strftime("%Y-%m-%d"))
+
+            # Otomatis isi Start Time jika belum terisi
+            if not self.time_var.get().strip():
+                t_end_str = self.time_end_var.get().strip()
+                if t_end_str:
+                    t_end_sec = parse_duration_to_seconds(t_end_str)
+                    if t_end_sec is not None:
+                        t_start_sec = (t_end_sec - dur_sec) % 86400
+                        self.time_var.set(format_seconds_to_hhmmss(t_start_sec))
+                else:
+                    self.time_var.set(datetime.datetime.now().strftime("%H:%M:%S"))
+
+            start_dt = self.get_current_datetime()
+            if start_dt:
                 end_dt = start_dt + datetime.timedelta(seconds=dur_sec)
                 self.time_end_var.set(end_dt.strftime("%H:%M:%S"))
         except Exception:
@@ -870,10 +913,142 @@ class App:
             if os.path.isfile(input_path) and len(files) > 0:
                 self.plot_modified(files[0])
             
+            self.last_files = files
+            if len(files) > 0 and STRAVA_AVAILABLE:
+                self.btn_upload.config(state=tk.NORMAL)
+            
             file_names = "\n".join([os.path.basename(f) for f in files])
             messagebox.showinfo("Success", f"Berhasil memproses {len(files)} file ke folder:\n{out_dir}\n\nFile:\n{file_names}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def upload_to_strava(self):
+        if not STRAVA_AVAILABLE:
+            messagebox.showerror("Error", "Modul Strava tidak tersedia. Pastikan 'requests' terinstall.")
+            return
+            
+        if not self.last_files:
+            messagebox.showwarning("Warning", "Tidak ada file yang baru diproses untuk di-upload.")
+            return
+            
+        self.show_upload_dialog()
+
+    def show_upload_dialog(self):
+        top = tk.Toplevel(self.root)
+        top.title("Detail Upload Strava")
+        top.geometry("450x240")
+        top.grab_set()
+        
+        default_name = os.path.splitext(os.path.basename(self.last_files[0]))[0] if self.last_files else "Activity"
+        default_name = default_name.replace("_modified", "").replace("_", " ").title()
+        
+        tk.Label(top, text="Nama Aktivitas di Strava:", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 2))
+        name_var = tk.StringVar(value=default_name)
+        tk.Entry(top, textvariable=name_var, width=45, font=("Segoe UI", 10)).pack(padx=20, pady=2)
+        
+        tk.Label(top, text="Deskripsi Aktivitas:", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(10, 2))
+        desc_var = tk.StringVar(value="Uploaded via FIT Activity Modifier")
+        tk.Entry(top, textvariable=desc_var, width=45, font=("Segoe UI", 10)).pack(padx=20, pady=2)
+        
+        def do_upload():
+            act_name = name_var.get().strip() or None
+            act_desc = desc_var.get().strip() or "Uploaded via FIT Activity Modifier"
+            top.destroy()
+            
+            try:
+                results = []
+                for f in self.last_files:
+                    if f.lower().endswith('.fit'):
+                        res = strava_api.upload_fit_file(f, name=act_name, description=act_desc)
+                        results.append(f"Upload ID: {res.get('id')} - Status: {res.get('status')}")
+                
+                if results:
+                    messagebox.showinfo("Strava Upload", "Berhasil mengunggah file ke Strava!\n" + "\n".join(results))
+                else:
+                    messagebox.showwarning("Warning", "Tidak ada file .fit yang ditemukan dari hasil proses.")
+            except Exception as e:
+                messagebox.showerror("Strava Upload Error", str(e))
+                
+        btn_frame = tk.Frame(top)
+        btn_frame.pack(pady=20)
+        
+        tk.Button(btn_frame, text="Unggah Sekarang", command=do_upload, bg="#fc4c02", fg="white", font=("Segoe UI", 10, "bold"), padx=10, pady=4).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Batal", command=top.destroy, font=("Segoe UI", 10), padx=10, pady=4).pack(side="left", padx=5)
+
+    def list_strava_activities(self):
+        if not STRAVA_AVAILABLE:
+            messagebox.showerror("Error", "Modul Strava tidak tersedia.")
+            return
+            
+        try:
+            activities = strava_api.get_latest_activities(15)
+            if not activities:
+                messagebox.showinfo("Aktivitas Strava", "Tidak ada aktivitas ditemukan.")
+                return
+                
+            self.show_activity_manager(activities)
+        except Exception as e:
+            messagebox.showerror("Strava API Error", str(e))
+
+    def show_activity_manager(self, activities):
+        import tkinter.simpledialog
+        
+        top = tk.Toplevel(self.root)
+        top.title("Strava Activity Manager")
+        top.geometry("600x400")
+        
+        tk.Label(top, text="Aktivitas Terbaru di Strava", font=("Segoe UI", 12, "bold")).pack(pady=10)
+        
+        listbox_frame = tk.Frame(top)
+        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        scrollbar = tk.Scrollbar(listbox_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        listbox = tk.Listbox(listbox_frame, yscrollcommand=scrollbar.set, font=("Segoe UI", 10))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+        
+        act_map = {}
+        for idx, act in enumerate(activities):
+            label = f"{act.get('start_date_local')[:10]} | {act.get('name')} (ID: {act.get('id')})"
+            listbox.insert(tk.END, label)
+            act_map[idx] = act
+            
+        def on_delete():
+            sel = listbox.curselection()
+            if not sel: return
+            act = act_map[sel[0]]
+            act_id = act.get('id')
+            if messagebox.askyesno("Konfirmasi", f"Yakin ingin menghapus '{act.get('name')}' dari Strava?\nIni tidak bisa dibatalkan!", parent=top):
+                try:
+                    strava_api.delete_activity(act_id)
+                    messagebox.showinfo("Sukses", "Aktivitas berhasil dihapus.", parent=top)
+                    top.destroy()
+                    self.list_strava_activities()
+                except Exception as e:
+                    messagebox.showerror("Error", str(e), parent=top)
+                    
+        def on_edit():
+            sel = listbox.curselection()
+            if not sel: return
+            act = act_map[sel[0]]
+            act_id = act.get('id')
+            new_name = tk.simpledialog.askstring("Ganti Nama", "Masukkan nama aktivitas baru:", initialvalue=act.get('name'), parent=top)
+            if new_name and new_name != act.get('name'):
+                try:
+                    strava_api.update_activity(act_id, name=new_name)
+                    messagebox.showinfo("Sukses", "Nama berhasil diubah.", parent=top)
+                    top.destroy()
+                    self.list_strava_activities()
+                except Exception as e:
+                    messagebox.showerror("Error", str(e), parent=top)
+                    
+        btn_frame = tk.Frame(top)
+        btn_frame.pack(pady=10)
+        
+        tk.Button(btn_frame, text="Ganti Nama", command=on_edit, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Hapus Aktivitas", command=on_delete, width=15, bg="#d32f2f", fg="white").pack(side=tk.LEFT, padx=5)
 
 def main():
     parser = argparse.ArgumentParser(description="Workflow otomatis modifikasi file FIT / CSV (HR, Kalori, Tanggal, Waktu & Durasi)")
@@ -889,8 +1064,53 @@ def main():
     parser.add_argument("--shift-hours", type=int, default=0, help="Geser waktu dalam satuan jam (+2, -2, dst)")
     parser.add_argument("--keep-temp", action="store_true", help="Simpan file CSV sementara di folder output")
     parser.add_argument("--gui", action="store_true", help="Jalankan antarmuka grafis (GUI)")
+    parser.add_argument("--upload", action="store_true", help="Otomatis unggah hasil modifikasi ke Strava")
+    parser.add_argument("--list-strava", action="store_true", help="Tampilkan daftar aktivitas terbaru di Strava")
+    parser.add_argument("--delete-strava", type=int, help="Hapus aktivitas Strava berdasarkan ID")
+    parser.add_argument("--edit-strava", type=int, help="Edit aktivitas Strava berdasarkan ID")
+    parser.add_argument("--name", type=str, help="Nama aktivitas baru (digunakan dengan --upload atau --edit-strava)")
+    parser.add_argument("--desc", "--description", type=str, help="Deskripsi aktivitas (digunakan dengan --upload)")
 
     args = parser.parse_args()
+
+    if args.delete_strava:
+        if not STRAVA_AVAILABLE:
+            print("Error: Modul Strava tidak tersedia.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            print(f"Menghapus aktivitas {args.delete_strava} dari Strava...")
+            strava_api.delete_activity(args.delete_strava)
+            print("Berhasil dihapus.")
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+        return
+
+    if args.edit_strava and args.name:
+        if not STRAVA_AVAILABLE:
+            print("Error: Modul Strava tidak tersedia.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            print(f"Mengubah nama aktivitas {args.edit_strava} menjadi '{args.name}'...")
+            strava_api.update_activity(args.edit_strava, name=args.name)
+            print("Berhasil diubah.")
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+        return
+
+    if args.list_strava:
+        if not STRAVA_AVAILABLE:
+            print("Error: Modul Strava tidak tersedia. Pastikan 'requests' terinstall.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            activities = strava_api.get_latest_activities(5)
+            print("=== 5 Aktivitas Terakhir di Strava ===")
+            for act in activities:
+                print(f"- {act.get('name')} ({act.get('start_date_local')}) - ID: {act.get('id')}")
+        except Exception as e:
+            print(f"Error fetching Strava activities: {e}", file=sys.stderr)
+            sys.exit(1)
+        if not args.input and not args.gui:
+            return  # Exit jika hanya ingin menampilkan list
 
     if not args.input or args.gui:
         root = tk.Tk()
@@ -916,7 +1136,7 @@ def main():
             relative_shift = (args.shift_days * 86400) + (args.shift_hours * 3600)
             target_dur_sec = parse_duration_to_seconds(args.dur) if args.dur else None
 
-            process_target(
+            out_dir, files = process_target(
                 input_path=args.input,
                 output_dir=args.output_dir,
                 target_avg_hr=args.hr,
@@ -926,6 +1146,17 @@ def main():
                 target_duration_seconds=target_dur_sec,
                 keep_temp=args.keep_temp
             )
+            
+            if args.upload and STRAVA_AVAILABLE:
+                for f in files:
+                    if f.lower().endswith('.fit'):
+                        try:
+                            print(f"Mengunggah {os.path.basename(f)} ke Strava...")
+                            res = strava_api.upload_fit_file(f, name=args.name, description=args.desc or "Uploaded via FIT Activity Modifier")
+                            print(f"Berhasil! Upload ID: {res.get('id')} - Status: {res.get('status')}")
+                        except Exception as e:
+                            print(f"Gagal mengunggah {os.path.basename(f)}: {e}", file=sys.stderr)
+                            
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
