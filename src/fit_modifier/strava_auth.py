@@ -1,23 +1,40 @@
 import json
 import requests
 import os
+import sys
 import webbrowser
 
-CONFIG_FILE = "strava_config.json"
+def find_config_file():
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    
+    candidates = [
+        os.path.join(base_dir, "config", "strava_config.json"),
+        os.path.join(base_dir, "strava_config.json"),
+        os.path.join(cwd, "config", "strava_config.json"),
+        os.path.join(cwd, "strava_config.json"),
+        os.path.join(script_dir, "strava_config.json"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return os.path.join(base_dir, "config", "strava_config.json")
 
 def main():
-    if not os.path.exists(CONFIG_FILE):
-        print(f"Error: {CONFIG_FILE} tidak ditemukan.")
+    config_path = find_config_file()
+    if not os.path.exists(config_path):
+        print(f"Error: {config_path} tidak ditemukan.")
         return
         
-    with open(CONFIG_FILE, "r") as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
         
     client_id = config.get("client_id")
     client_secret = config.get("client_secret")
     
     if not client_id or not client_secret:
-        print("Client ID atau Client Secret kosong di strava_config.json!")
+        print(f"Client ID atau Client Secret kosong di {config_path}!")
         return
 
     # 1. Buat URL Otorisasi dengan scope yang benar
@@ -33,7 +50,7 @@ def main():
     
     try:
         webbrowser.open(auth_url)
-    except:
+    except Exception:
         pass
         
     print("Setelah Anda klik 'Authorize', browser akan beralih ke halaman error (localhost).")
@@ -64,10 +81,10 @@ def main():
         config['refresh_token'] = data.get('refresh_token')
         config['expires_at'] = data.get('expires_at')
         
-        with open(CONFIG_FILE, "w") as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
             
-        print("✅ BERHASIL! Token baru dengan izin baca & tulis telah disimpan ke strava_config.json")
+        print(f"✅ BERHASIL! Token baru dengan izin baca & tulis telah disimpan ke {config_path}")
     else:
         print(f"❌ GAGAL: {res.text}")
 

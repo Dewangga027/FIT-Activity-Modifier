@@ -32,12 +32,15 @@ Definition,4,record,timestamp,1,,heart_rate,1,,distance,1,,speed,1,,,,,,,,,,,,,,
 
 def find_fit_csv_tool():
     """Mencari lokasi FitCSVTool.jar"""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cwd = os.getcwd()
     candidates = [
+        os.path.join(base_dir, "tools", "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool", "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool.jar"),
+        os.path.join(cwd, "tools", "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool.jar"),
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -237,7 +240,10 @@ class CreatorApp:
             self.cal_var.get()
         )
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
     app = CreatorApp(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()

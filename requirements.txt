@@ -1,8 +1,0 @@
-# FIT Activity Modifier Requirements
-# ==================================
-# This project relies entirely on Python 3 Standard Libraries.
-# No third-party pip packages are required.
-
-# System Requirements:
-# 1. Python 3.8+
-# 2. Java Runtime Environment (JRE 8+) - for FitCSVTool.jar

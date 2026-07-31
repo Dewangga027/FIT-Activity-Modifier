@@ -1,0 +1,3 @@
+[console_scripts]
+fit-creator = fit_modifier.creator:main
+fit-modifier = fit_modifier.modifier:main

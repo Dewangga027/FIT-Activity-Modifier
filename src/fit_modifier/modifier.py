@@ -9,10 +9,14 @@ import subprocess
 import argparse
 
 try:
-    import strava_api
+    from fit_modifier import strava_api
     STRAVA_AVAILABLE = True
 except ImportError:
-    STRAVA_AVAILABLE = False
+    try:
+        import strava_api
+        STRAVA_AVAILABLE = True
+    except ImportError:
+        STRAVA_AVAILABLE = False
 
 try:
     import matplotlib
@@ -27,12 +31,15 @@ GARMIN_EPOCH = datetime.datetime(1989, 12, 31)
 
 def find_fit_csv_tool():
     """Mencari lokasi FitCSVTool.jar"""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cwd = os.getcwd()
     candidates = [
+        os.path.join(base_dir, "tools", "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool", "FitCSVTool.jar"),
         os.path.join(base_dir, "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool", "FitCSVTool.jar"),
-        os.path.join(os.getcwd(), "FitCSVTool.jar"),
+        os.path.join(cwd, "tools", "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool", "FitCSVTool.jar"),
+        os.path.join(cwd, "FitCSVTool.jar"),
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -453,7 +460,7 @@ def process_single_file(input_path, output_dir, target_avg_hr=None, target_calor
 
     jar_path = find_fit_csv_tool()
     if not jar_path:
-        raise FileNotFoundError("FitCSVTool.jar tidak ditemukan! Pastikan folder FitCSVTool ada.")
+        raise FileNotFoundError("FitCSVTool.jar tidak ditemukan! Pastikan folder tools/FitCSVTool ada.")
 
     temp_files_to_clean = []
 
@@ -560,7 +567,8 @@ class App:
         
         # Row 0: Input File / Folder
         tk.Label(root, text="Input File / Folder:", font=FONT_BOLD).grid(row=0, column=0, sticky="w", padx=12, pady=6)
-        self.input_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit")
+        default_input = os.path.join(os.getcwd(), "fit")
+        self.input_var = tk.StringVar(value=default_input if os.path.exists(default_input) else "")
         tk.Entry(root, textvariable=self.input_var, width=58, font=FONT_MAIN).grid(row=0, column=1, padx=5, pady=6, sticky="w")
         
         btn_frame = tk.Frame(root)
@@ -570,7 +578,8 @@ class App:
         
         # Row 1: Output Folder
         tk.Label(root, text="Output Folder:", font=FONT_BOLD).grid(row=1, column=0, sticky="w", padx=12, pady=6)
-        self.output_dir_var = tk.StringVar(value=r"g:\Download\fit-sdk-tools-21.205.0\fit-sdk-tools-21.205.0\fit_modified")
+        default_output = os.path.join(os.getcwd(), "fit_modified")
+        self.output_dir_var = tk.StringVar(value=default_output)
         tk.Entry(root, textvariable=self.output_dir_var, width=58, font=FONT_MAIN).grid(row=1, column=1, padx=5, pady=6, sticky="w")
         tk.Button(root, text="Browse Folder...", command=self.browse_output_dir, font=FONT_MAIN).grid(row=1, column=2, padx=12, pady=6, sticky="w")
         
@@ -675,7 +684,7 @@ class App:
         else:
             tk.Label(self.chart_frame, text="Matplotlib tidak terinstall. Chart tidak ditampilkan.", fg="gray", font=FONT_MAIN).pack()
 
-        if os.path.exists(self.input_var.get()):
+        if self.input_var.get() and os.path.exists(self.input_var.get()):
             self.auto_set_paths(self.input_var.get())
 
     def _on_start_time_changed(self):

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fit-modifier"
+version = "1.0.0"
+description = "A professional tool to modify and create FIT activity files for Huawei Health and Strava."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT License" }
+dependencies = [
+    "requests",
+    "matplotlib"
+]
+
+[project.scripts]
+fit-modifier = "fit_modifier.modifier:main"
+fit-creator = "fit_modifier.creator:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -3,17 +3,36 @@ import json
 import requests
 import time
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "strava_config.json")
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 
+def find_config_file():
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    
+    candidates = [
+        os.path.join(base_dir, "config", "strava_config.json"),
+        os.path.join(base_dir, "strava_config.json"),
+        os.path.join(cwd, "config", "strava_config.json"),
+        os.path.join(cwd, "strava_config.json"),
+        os.path.join(script_dir, "strava_config.json"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return os.path.join(base_dir, "config", "strava_config.json")
+
 def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        raise FileNotFoundError(f"Konfigurasi Strava tidak ditemukan: {CONFIG_FILE}")
-    with open(CONFIG_FILE, "r") as f:
+    config_file = find_config_file()
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"Konfigurasi Strava tidak ditemukan: {config_file}")
+    with open(config_file, "r") as f:
         return json.load(f)
 
 def save_config(config):
-    with open(CONFIG_FILE, "w") as f:
+    config_file = find_config_file()
+    os.makedirs(os.path.dirname(config_file), exist_ok=True)
+    with open(config_file, "w") as f:
         json.dump(config, f, indent=2)
 
 def refresh_token(config):

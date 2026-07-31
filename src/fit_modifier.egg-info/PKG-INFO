@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: fit-modifier
+Version: 1.0.0
+Summary: A professional tool to modify and create FIT activity files for Huawei Health and Strava.
+License: MIT License
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: requests
+Requires-Dist: matplotlib
+Dynamic: license-file
+
 # FIT Activity Modifier
 
 A professional, lightweight Python utility and GUI application designed to inspect, modify, and generate Garmin FIT (`.fit`) and CSV (`.csv`) workout activity files. Easily adjust key fitness metrics—such as Heart Rate time-series, Total Calories, Start Timestamp, and Workout Duration—before exporting or uploading directly to platforms like **Strava**. Built on top of Garmin's official **FitCSVTool**.
