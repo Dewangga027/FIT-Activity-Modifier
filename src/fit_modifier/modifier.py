@@ -236,10 +236,10 @@ def extract_metadata_from_file(filepath):
             reader = csv.reader(csvfile)
             for row in reader:
                 if len(row) > 2 and row[0] == 'Data':
-                    # Extract date
-                    if dt_str is None:
+                    # Extract date only from record to avoid device_info bugs
+                    if dt_str is None and row[2] == 'record':
                         for j in range(3, len(row)-1, 3):
-                            if row[j] in ('timestamp', 'start_time'):
+                            if row[j] == 'timestamp':
                                 val = row[j+1]
                                 if val.isdigit():
                                     garmin_ts = int(val)
@@ -378,28 +378,22 @@ def process_csv(input_file, output_file, target_avg_hr=None, target_calories=Non
 
     for row in rows:
         if len(row) > 2 and row[0] == 'Data':
-            for j in range(3, len(row)-1, 3):
-                if row[j] in ('timestamp', 'start_time'):
-                    val = row[j+1]
-                    if val.isdigit():
-                        ts_val = int(val)
-                        if first_ts is None or ts_val < first_ts:
-                            first_ts = ts_val
-                elif row[j] == 'local_timestamp':
-                    val = row[j+1]
-                    if val.isdigit():
-                        ts_val = int(val)
-                        if first_local_ts is None or ts_val < first_local_ts:
-                            first_local_ts = ts_val
-
             if row[2] == 'record':
                 for j in range(3, len(row)-1, 3):
                     if row[j] == 'timestamp':
                         val = row[j+1]
                         if val.isdigit():
                             ts_val = int(val)
+                            if first_ts is None or ts_val < first_ts:
+                                first_ts = ts_val
                             if last_record_ts is None or ts_val > last_record_ts:
                                 last_record_ts = ts_val
+                    elif row[j] == 'local_timestamp':
+                        val = row[j+1]
+                        if val.isdigit():
+                            ts_val = int(val)
+                            if first_local_ts is None or ts_val < first_local_ts:
+                                first_local_ts = ts_val
 
             if row[2] == 'session':
                 for j in range(3, len(row)-1, 3):
@@ -434,6 +428,8 @@ def process_csv(input_file, output_file, target_avg_hr=None, target_calories=Non
         target_dt_utc = target_dt - datetime.timedelta(seconds=local_offset_seconds)
         
         time_shift = int((target_dt_utc - original_dt_utc).total_seconds())
+        print(f"      [DEBUG] Target Local: {target_dt} | Offset: {local_offset_seconds}s")
+        print(f"      [DEBUG] Target UTC: {target_dt_utc} | Original UTC: {original_dt_utc} | Shift: {time_shift}s")
 
 
     # Hitung skala durasi (scale_factor) untuk memenskala timestamp record agar Elapsed Time di Strava / Garmin berubah
@@ -605,7 +601,7 @@ def process_single_file(input_path, output_dir, target_avg_hr=None, target_calor
             trimp = calculate_trimp(hrs)
             zones = calculate_hr_zones(hrs)
             zone_str = ", ".join([f"{k}: {v['pct']}%" for k, v in zones.items()])
-            print(f"      📊 Analytics HR: TRIMP Score = {trimp} | HR Zones: [{zone_str}]")
+            print(f"      Analytics HR: TRIMP Score = {trimp} | HR Zones: [{zone_str}]")
     except Exception:
         pass
 
