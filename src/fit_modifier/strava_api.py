@@ -141,7 +141,19 @@ def delete_activity(activity_id):
     if response.status_code == 204:
         return True
     else:
-        raise Exception(f"Gagal menghapus aktivitas: {response.text}")
+        err_msg = response.text
+        if "Authorization Error" in err_msg or "Application" in err_msg or "internal" in err_msg:
+            raise Exception(
+                "Izin Ditolak oleh Strava API!\n\n"
+                "Penyebab Utama:\n"
+                "1. Kebijakan Keamanan Strava API: Aplikasi ini HANYA diizinkan menghapus "
+                "aktivitas yang diunggah oleh aplikasi ini sendiri.\n"
+                "2. Aktivitas yang dicatat langsung dari HP, Garmin, atau aplikasi lain "
+                "harus dihapus secara manual dari aplikasi/website Strava.\n"
+                "3. Jika ini aktivitas hasil upload aplikasi ini, jalankan 'python -m fit_modifier.strava_auth' "
+                "untuk memperbarui token otorisasi (scope: activity:write)."
+            )
+        raise Exception(f"Gagal menghapus aktivitas: {err_msg}")
 
 def update_activity(activity_id, name=None, description=None, type=None):
     """Mengubah metadata aktivitas di Strava."""
@@ -157,4 +169,10 @@ def update_activity(activity_id, name=None, description=None, type=None):
     if response.status_code == 200:
         return response.json()
     else:
-        raise Exception(f"Gagal mengupdate aktivitas: {response.text}")
+        err_msg = response.text
+        if "Authorization Error" in err_msg or "Application" in err_msg:
+            raise Exception(
+                "Izin Ditolak oleh Strava API saat memperbarui data!\n"
+                "Pastikan Anda sudah mengotorisasi ulang aplikasi menggunakan 'python -m fit_modifier.strava_auth' dengan izin activity:write."
+            )
+        raise Exception(f"Gagal mengupdate aktivitas: {err_msg}")
